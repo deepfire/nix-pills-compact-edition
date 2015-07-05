@@ -26,7 +26,7 @@
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-1-why-you-should-give-it-a-try][Nix Pill #1: why you should give it a try]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]]
 
-* Nix Pill #1: why you should give it a try 
+* Nix Pill #1: why you should give it a try
 
 *** Motivation: problems with other package managers
 
@@ -101,7 +101,7 @@
       - dynamic composition at runtime -- solutions exist, but are one-off
       - massive rebuilds due to fundamental component upgrades (kernel, compilers,
         base libraries) -- mostly made irrelevant by build farms
-    - However, reality shows that Nix is an eminently livable environment, and
+    - However, reality shows that /Nix/ is an eminently livable environment, and
       progress in solving the above problems is being steadily made
     - /[[https://github.com/NixOS/nixpkgs][Nixpkgs]]/ ([[http://nixos.org/nixos/packages.html][search]]) is a completely new repository of all existing software
       - fresh concept
@@ -122,20 +122,20 @@
 
     - =/nix/store= and a separate user, to isolate the store and build processes:
 
-      #+BEGIN_SRC sh
-      adduser nix
-      mkdir -m 0755 /nix && chown nix /nix
-      #+END_SRC
+#+BEGIN_SRC sh
+adduser nix
+mkdir -m 0755 /nix && chown nix /nix
+#+END_SRC
 
     - From now on, all the operations we do on the shell are done from this =nix=
       user:
 
-      #+BEGIN_SRC sh
-      su - nix
-      tar -xf nix-1.9-x86_64-linux.tar.bz2
-      cd nix-1.9-x86_64-linux
-      ./install
-      #+END_SRC
+#+BEGIN_SRC sh
+su - nix
+tar -xf nix-1.9-x86_64-linux.tar.bz2
+cd nix-1.9-x86_64-linux
+./install
+#+END_SRC
 
     *** INCOMPLETE ***
 

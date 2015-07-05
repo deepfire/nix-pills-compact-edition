@@ -26,6 +26,7 @@
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-1-why-you-should-give-it-a-try][Nix Pill #1: why you should give it a try]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-4-the-basics-of-the-language][Nix Pill #4: the basics of the language]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-12-the-inputs-design-pattern][Nix Pill #12: the inputs design pattern]]
 
 * Nix Pill #1: why you should give it a try
 
@@ -447,9 +448,289 @@ nix-repl> let a = 10; in with longExpression; longExpression.a + b
 
 * Nix Pill #12: the inputs design pattern
 
-*** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-12-inputs-design-pattern.html
+***  Composing package definitions: repositories in Nix
 
-    *** INCOMPLETE ***
+     - We only packaged a single program so far -- but how do we compose package definitions?
+
+     - As we have already seen, from the point of view of a single /package X/,
+       /Nix/ is a language for describing:
+       - /names/ of the /externalities/ that are required to build (and run) /package X/
+       - how to use these /externalities/, given their /names/
+       - ..which looks suspiciously like function definition -- which it is!
+
+     - However, function definition at package level isn't enough for whole-system description:
+       - ..functions need arguments supplied, which is the /Nix/ way of saying that:
+       - ..packages need to have their dependencies supplied
+       - ..which means that particular versions and build configurations of the
+         dependencies need to be decided upon /somewhere/
+       - Traditionally, this /somewhere/ is called a /package repository/
+
+     - /Nix/, by itself, doesn't enforce a /package repository/ structure, as the
+       only inherent requirement of its functional decomposition approach is that
+       all the /functions/ that define packages must be supplied proper arguments.
+
+     - /Nix/, however has a particular /package repository/, with a particular
+       structure -- /[[https://github.com/NixOS/nixpkgs][Nixpkgs]]/
+       - essentially, a single, giant expression in the /Nix/ language:
+         - mostly organized across individual, per-package files,
+         - the root =import=-ing the nodes and leaves
+         - evaluates to a giant attribute set with /name -> package/ pairs
+         - ..which works efficiently, due to the /lazy evaluation/ property of /Nix/,
+           meaning it only evaluates parts of the expression that are actually needed
+       - ..which contrasts with, for example Debian and Fedora, which pull package
+         definitions from /several/ repositories (through indexes like =/etc/apt/sources.list=)
+       - ..but coincides, for example, with Gentoo
+
+     - The structure of /Nixpkgs/ has /patterns/ (like the above -- pulling
+       everything into a /single coherent definition/) that aren't /enforced/ by
+       /Nix/, but are nonetheless present, codifying a distillation of successful
+       practices of describing the world
+
+*** Packaging graphviz
+
+    - Graphviz:
+      - uses the standard autotools build system
+      - requires no patching
+      - dependencies are optional
+      - source: http://www.graphviz.org/pub/graphviz/stable/SOURCES/graphviz-2.38.0.tar.gz
+
+    - Expression:
+
+      #+BEGIN_SRC nix
+      let
+        pkgs = import <nixpkgs> {};
+        mkDerivation = import ./autotools.nix pkgs;
+      in mkDerivation {
+        name = "graphviz";
+        src = ./graphviz-2.38.0.tar.gz;
+      }
+      #+END_SRC
+
+      - reuses =autotools.nix= from =hello.nix=
+
+    - Build, producing runnable binaries under =result/bin=:
+
+: nix-build graphviz.nix
+
+    - Let's create a simple png:
+
+      #+BEGIN_SRC sh
+      $ echo 'graph test { a -- b }' | result/bin/dot -Tpng -o test.png
+      Format: "png" not recognized. Use one of: canon cmap [...]
+      #+END_SRC
+
+      - ..meaning that only the output formats graphviz supports natively, without
+        using any extra library, were built.
+
+    - in =autotools.nix= there's a =buildInputs= variable, which gets concatenated
+      to =baseInputs=.  That would be the perfect place to add a build
+      dependency.  We created that variable exactly for this reason to be
+      overridable from package expressions.
+
+*** Digression about gcc and ld wrappers
+
+    - build systems for =gd=, =jpeg=, =fontconfig= and =bzip2= libraries
+      (dependencies of =gd=) don't use =pkg-config= to specify which flags to pass
+      to the compiler, and so rely, instead, on the traditional, system-global
+      locations, such as =/usr/lib= and =/usr/include= to find dependency headers
+      and binaries -- which are exactly absent in the Nix model.
+
+    - =gcc= and =binutils= package definitions provided by =Nixpkgs= include
+      [[http://nixos.org/nixpkgs/manual/#ssec-setup-hooks][wrappers]], that allow passing extra arguments to =gcc= and =ld= binaries --
+      bypassing and overriding the project build systems we call into, and
+      effectively providing us with a project-independent way of supplying
+      tool flags and dependencies:
+
+      - =NIX_CFLAGS_COMPILE= :: extra flags to gcc at compile time
+      - =NIX_LDFLAGS= :: extra flags to ld
+
+    - These variables can be filled from /derivation inputs/ the same way as was
+      previously done for =PATH= -- here is the relevant snippet of =setup.sh=:
+
+      #+BEGIN_SRC sh
+      for p in $baseInputs $buildInputs; do
+        if [ -d $p/bin ]; then
+          export PATH="$p/bin${PATH:+:}$PATH"
+        fi
+        if [ -d $p/include ]; then
+          export NIX_CFLAGS_COMPILE="-I $p/include${NIX_CFLAGS_COMPILE:+ }$NIX_CFLAGS_COMPILE"
+        fi
+        if [ -d $p/lib ]; then
+          export NIX_LDFLAGS="-rpath $p/lib -L $p/lib${NIX_LDFLAGS:+ }$NIX_LDFLAGS"
+        fi
+      done
+      #+END_SRC
+
+      - The =-rpath= flag in =ld= is needed because at runtime, the executable
+        must use exactly that version of the library.
+      - If unneeded paths are specified, the fixup phase will automatically shrink
+        the =rpath=.
+
+*** Completing graphviz with gd
+
+    Building upon the results above, we now can transparently supply the graphviz
+    build system with more libraries -- which it will find without any =configure=
+    parameters, thanks to the =gcc= and =ld= wrappers:
+
+#+BEGIN_SRC nix
+# graphviz.nix
+let
+  pkgs = import <nixpkgs> {};
+  mkDerivation = import ./autotools.nix pkgs;
+in mkDerivation {
+  name = "graphviz";
+  src = ./graphviz-2.38.0.tar.gz;
+  buildInputs = with pkgs; [ gd fontconfig libjpeg bzip2 ];
+}
+#+END_SRC
+
+*** Composing package definitions: the repository expression
+
+    - It's nice to be able to abstract out the file-level repository structure,
+      replacing the file paths with names, and that's what /Nixpkgs/ does -- the
+      top level expression imports the file names and provides the results as
+      elements of the attribute set:
+
+#+BEGIN_SRC nix
+# default.nix:
+{
+  hello    = import ./hello.nix;
+  graphviz = import ./graphviz.nix;
+}
+#+END_SRC
+
+    - Trying it:
+
+#+BEGIN_SRC sh
+$ nix-repl
+nix-repl> :l default.nix
+Added 2 variables.
+nix-repl> hello
+«derivation /nix/store/dkib02g54fpdqgpskswgp6m7bd7mgx89-hello.drv»
+nix-repl> graphviz
+«derivation /nix/store/zqv520v9mk13is0w980c91z7q1vkhhil-graphviz.drv»
+#+END_SRC
+
+    - With =nix-build=:
+
+      #+BEGIN_SRC sh
+      $ nix-build default.nix -A hello
+      [...]
+      $ result/bin/hello
+      Hello, world!
+      #+END_SRC
+
+      - The =-A= argument is used to access an /attribute/ of the set from the
+        given .nix expression.
+      - When a directory (by default the current directory) has a =default.nix=,
+        it will be used by default, so the following will work as well:
+
+: nix-build -A hello
+
+    - Install the package in your user environment:
+
+      #+BEGIN_SRC sh
+      $ nix-env -f . -iA graphviz
+      [...]
+      $ dot -V
+      #+END_SRC
+
+      - =-f= is used to specify the expression to use, in this case the current
+        directory, therefore ./default.nix.
+      - =-i= stands for installation
+      - =-A= is the same as above for nix-build
+
+    - ..which concludes an exhibit of the essence of nixpkgs -- a collection of
+      package definitions.
+
+*** The inputs pattern
+
+    - Three problems with =hello.nix= and =graphviz.nix= definitions, rooting,
+      essentially in their dependence on =Nixpkgs= structure:
+      - They =import= /Nixpkgs/ directly. In =autotools.nix= instead we pass /Nixpkgs/ as
+        an argument. That's a much better approach.
+      - No way to define =graphviz= without =libgd= support
+      - No way to vary =libgd= version in =graphviz= definition
+
+    - So far, the answer was to edit the /callee/
+    - The essence of the /inputs pattern/ is to actually use the functional abstraction,
+      shifting these high-level decisions where they belong -- to the /caller/
+
+    - Inputs of an expression :: the set of /derivations/ needed to build that
+         expression. In this case:
+      - =mkDerivation= from =autotools=. Recall that =mkDerivation= has an
+        /implicit dependency/ on the toolchain.
+      - =libgd= and its dependencies.
+
+    - *NOTE*: =src= is also an input but it's pointless to change the source
+      from the caller.  For version bumps, in /Nixpkgs/ we prefer to write another
+      expression (e.g. because patches are needed or different inputs are needed).
+
+*** Leveraging functional abstraction for package expression independence
+
+    - for =graphviz.nix=:
+
+      #+BEGIN_SRC nix
+      { mkDerivation, gdSupport ? true, gd, fontconfig, libjpeg, bzip2 }:
+
+      mkDerivation {
+        name = "graphviz";
+        src = ./graphviz-2.38.0.tar.gz;
+        buildInputs = if gdSupport then [ gd fontconfig libjpeg bzip2 ] else [];
+      }
+      #+END_SRC
+
+      - ={...}: ...= is syntax for defining functions accepting an attribute set
+        as argument. *INCOMPLETE*: URL
+      - when omitted by the caller, =gdSupport= defaults to =true=
+
+    - for =default.nix=:
+
+      #+BEGIN_SRC nix
+      let
+        pkgs         = (import <nixpkgs>) {};
+        mkDerivation = (import ./autotools.nix) pkgs;
+      in with pkgs; {
+        hello        = (import ./hello.nix)    { inherit mkDerivation; };
+        graphviz     = (import ./graphviz.nix) { inherit mkDerivation gd fontconfig libjpeg bzip2; };
+        graphvizCore = (import ./graphviz.nix) { inherit mkDerivation gd fontconfig libjpeg bzip2;
+                                                 gdSupport = false; };
+      }
+      #+END_SRC
+
+      - =let= binds convenience variables
+      - for pedagogical purposes we cheat, by using a =<nixpkgs>=, which already
+        contains everything one might want -- defining contents of =<nixpkgs>=
+        from ground up would have obscured the subject matter of this exhibition.
+      - =with pkgs= "opens" the /Nixpkgs/, binding =gd=, =fontconfig=, =libjpeg= and =bzip2=
+      - the toolchain is captured in the particular value of =mkDerivation=
+      - =inherit a b c;= is syntactic sugar for =a = a; b = b; c = c;= --
+        essentially capturing a part of the variable scope in an /attribute set/
+      - =import= reads the =.nix= files, which contain functions -- which are
+        subsequently called with the /attribute sets/ arguments -- which is
+        clarified by the added parentheses (which are otherwise unnecessary)
+
+*** Conclusion
+
+    The /inputs pattern/ is another name for leveraging functional abstraction to
+    separate the repository in two conceptual parts:
+
+    - Package definitions :: =import=-ed leaves, containing flexible function
+         expressions, that are free from policy decision-making, such as:
+      - repository structure
+      - specific versions of build inputs
+      - other choices that the author of a particular /package function/
+        expression chose to abstract out
+    - High-level structure :: the part that:
+      - maintains knowledge of the file structure of /repository/, at the points
+        of =import= expressions
+      - provides a global namespace of /package names/, associating them to
+        attribute sets, which are produced by:
+        - instantiation of the =import=-ed /package functions/
+          - note that the same /package function/ can be instantiated several
+            times, resulting in several /packages/, bound to different /package names/
+        - ..while making decisions about their arguments -- whose interpretation is
+          determined by the /package functions/
 
 * Nix Pill #13: the callPackage design pattern
 

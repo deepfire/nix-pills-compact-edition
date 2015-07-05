@@ -3,7 +3,7 @@
 
 * About this document
 
-  [[https://github.com/deepfire/nix-pills-compact-edition/blob/master/Nix-Pills-Compact-Edition.org][Nix Pills Compact Edition]] is an on-going attempt to reformulate the excellent
+  [[https://github.com/deepfire/nix-pills-compact-edition#index][Nix Pills Compact Edition]] is an on-going attempt to reformulate the excellent
   series of articles by [[http://lethalman.blogspot.com/][Luca Bruno]], known as [[http://lethalman.blogspot.ru/2014/07/nix-pill-1-why-you-should-give-it-try.html][Nix Pills]], with the following
   differences in mind:
 
@@ -11,10 +11,9 @@
     - an attempt at a more definition-based approach
     - ..while trying to give a more complete picture
 
-  In some places I have been outright plagiarizing Luca through liberal
-  cut'n'paste, as is consistent with the idea of "reformulation", so this is very
-  much a derived work, and so, as usual -- all the greatness is due to Luca, all
-  the mistakes were added by me.
+  Mostly I have been outright plagiarizing Luca through liberal cut'n'paste, so
+  this is very much a derived work, and so, as usual -- all the greatness is due
+  to Luca, all the mistakes were added by me.
 
 *** The preferred way to edit this document
 
@@ -24,7 +23,7 @@
 * Index
 
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-1-why-you-should-give-it-a-try][Nix Pill #1: why you should give it a try]]
-  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]] (incomplete)
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-4-the-basics-of-the-language][Nix Pill #4: the basics of the language]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-12-the-inputs-design-pattern][Nix Pill #12: the inputs design pattern]]
 

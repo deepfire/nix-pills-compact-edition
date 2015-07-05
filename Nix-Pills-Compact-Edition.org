@@ -1,0 +1,104 @@
+# -*- indent-tabs-mode: nil -*-
+#+startup: hidestars odd
+
+* About this document
+
+  [[https://github.com/deepfire/nix-pills-compact-edition/blob/master/Nix-Pills-Compact-Edition.org][Nix Pills Compact Edition]] is an on-going attempt to reformulate the excellent
+  series of articles by [[http://lethalman.blogspot.com/][Luca Bruno]], known as [[http://lethalman.blogspot.ru/2014/07/nix-pill-1-why-you-should-give-it-try.html][Nix Pills]], with the following
+  differences in mind:
+
+    - a more compact, outline-based format
+    - an attempt at a more definition-based approach
+    - ..while trying to give a more complete picture
+
+  In some places I have been outright plagiarizing Luca through liberal
+  cut'n'paste, as is consistent with the idea of "reformulation", so this is very
+  much a derived work, and so, as usual -- all the greatness is due to Luca, all
+  the mistakes were added by me.
+
+*** The preferred way to edit this document
+
+    ..is through the excellent Org Mode: http://orgmode.org/ -- a richer, but
+    still light-weight, alternative to Markdown.
+
+* Nix Pill #1: why you should give it a try 
+
+*** Motivation: problems with other package managers
+
+    - not being purely functional
+    - multiple versions are possible, but take a lot of effort
+    - changing installation paths means breaking implicit assumptions about the file system hierarchy
+    - containers, as a blunt solution, have their serious drawbacks
+      - nearly useless without: orchestration, shared package cache
+    - per-language sandbox-like solutions: virtualenv, cabal sandbox
+      - scope that is too narrow -- compiler, C libraries are not taken into account
+      - a bunch of specific solutions with different flaws
+
+*** Nix way: purely functional, universal solution at the right level of abstraction
+
+    - no assumption about the global state of the system
+    - system composed of elements (called /derivations/), that are explicitly
+      /derived/ from each other
+    - global, /hash/-addressed, immutable =/nix/store=, storing /derivation outputs/ -- results of
+      building packages from source, where, during build:
+      - all gratuitious variables are set to their mathematical equivalent of zero (or /identity/, if you will)
+        - time/date
+        - environment
+        - non-essential file system contents -- the build is chrooted
+      - all essential variables (called /build inputs/) count into the /hash/
+        of the store elements, and are fixed forever:
+        - build toolchain -- compiler / linker / etc.
+        - other build time dependencies -- kernel headers, libc, libraries, make, automake, coreutils
+        - runtime dependencies
+    - ..which means that nearly identical subsets of packages can peacefully
+      coexist along each other, with their only difference, for example, being
+      the compiler they were built with
+      - which means painless, entirely separate upgrades -- at the cost of disc space, of course
+    - (indirectly) composing =PATH= from elements stored in =/nix/store=
+
+*** Nix way: immutability
+
+    - Other package managers mutate global state by replacing packages in-place:
+      - the library namespace granularity is mostly just the /soname/
+      - new library gets used by all the current packages, linking to that
+        /soname/, mostly available at a well-known, standard, shared, global location
+    - In /Nix/, the namespace granularity for libraries (and other /inputs/, build or runtime)
+      is its /hash/:
+      - a new version of =glibc= becomes available at a location based on its /hash/,
+        which will be known only to the packages that will be newly built with
+        that particular /derivation/ as a specific build input -- passed as if
+        by a function call
+    - Ergo, the /Nix/ equivalent of the traditional glibc "upgrade" is recompiling /everything/!
+      - In practice, build farms provide you with the pre-built /derivations/,
+        through an opt-out mechanism known as /binary cache/
+      - Security updates is a separate story, a story of compromise with the
+        principle of purity
+    - Another problem is that it's hard to compose at runtime applications
+      that don't have in mind a pure functional model, and that can't be
+      adapted to:
+      - example: Firefox looks for the Flash plugin binary at a global (albeit per-user) path
+        - which breaks the /Nix/ model, entirely
+        - the solution (known as /wrapping/) is to produce another Firefox
+          derivation, that will at runtime feed unmodified Firefox the plugin path
+          we desire, allowing us to put the Flash binary into =/nix/store=
+    - Yet another question is upgrading data:
+      - typically done in-place by other package managers, in best tradition of mutation
+      - /Nix/ makes it your own responsibility
+
+*** Conclusion
+
+    - /Nix/ ([[http://nixos.org/nix/manual/][manual]]) maximises both /flexibility/ and /reproducibility/ of system composition
+    - /[[http://nixos.org/nixops/][NixOps]]/ (based on /Nix/, /Nixpkgs/ and /NixOS/) makes cloud deployment
+      easy, consistent and reliable, effectively deprecating all existing
+      containment and orchestration solutions, such as Puppet, Vagrant, you name
+      it
+    - Weak spots are:
+      - dynamic composition at runtime -- solutions exist, but are one-off
+      - massive rebuilds due to fundamental component upgrades (kernel, compilers,
+        base libraries) -- mostly made irrelevant by build farms
+    - However, reality shows that Nix is an eminently livable environment, and
+      progress in solving the above problems is being steadily made
+    - /[[https://github.com/NixOS/nixpkgs][Nixpkgs]]/ ([[http://nixos.org/nixos/packages.html][search]]) is a completely new repository of all existing software
+      - fresh concept
+      - growing contribution
+      - the current state is far beyond the experimental stage

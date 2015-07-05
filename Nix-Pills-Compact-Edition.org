@@ -21,6 +21,11 @@
     ..is through the excellent Org Mode: http://orgmode.org/ -- a richer, but
     still light-weight, alternative to Markdown.
 
+* Index
+
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-1-why-you-should-give-it-a-try][Nix Pill #1: why you should give it a try]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]]
+
 * Nix Pill #1: why you should give it a try 
 
 *** Motivation: problems with other package managers

@@ -143,62 +143,94 @@
 
 *** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-3-enter-environment.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #4: the basics of the language
 
 *** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-4-basics-of-language.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #5: functions and imports
 
 *** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-5-functions-and-imports.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #6: our first derivation
 
 *** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-6-our-first-derivation.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #7: a working derivation
 
 *** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-7-working-derivation.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #8: generic builders
 
 *** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-8-generic-builders.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #9: automatic runtime dependencies
 
 *** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-9-automatic-runtime.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #10: developing with nix-shell
 
 *** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-10-developing-with-nix-shell.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #11: the garbage collector
 
 *** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-11-garbage-collector.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #12: the inputs design pattern
 
 *** Origin: http://lethalman.blogspot.ru/2014/08/nix-pill-12-inputs-design-pattern.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #13: the callPackage design pattern
 
 *** Origin: http://lethalman.blogspot.ru/2014/09/nix-pill-13-callpackage-design-pattern.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #14: the override design pattern
 
 *** Origin: http://lethalman.blogspot.ru/2014/09/nix-pill-14-override-design-pattern.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #15: nix search paths
 
 *** Origin: http://lethalman.blogspot.ru/2014/09/nix-pill-15-nix-search-paths.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #16: nixpkgs, the parameters
 
 *** Origin: http://lethalman.blogspot.ru/2014/11/nix-pill-16-nixpkgs-parameters.html
+
+    *** INCOMPLETE ***
 
 * Nix Pill #17: nixpkgs, overriding packages
 
 *** Origin: http://lethalman.blogspot.ru/2014/11/nix-pill-17-nixpkgs-overriding-packages.html
 
+    *** INCOMPLETE ***
+
 * Nix Pill #18: nix store paths
 
 *** Origin: http://lethalman.blogspot.ru/2015/01/nix-pill-18-nix-store-paths.html
+
+    *** INCOMPLETE ***

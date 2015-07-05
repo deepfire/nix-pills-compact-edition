@@ -25,6 +25,7 @@
 
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-1-why-you-should-give-it-a-try][Nix Pill #1: why you should give it a try]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-4-the-basics-of-the-language][Nix Pill #4: the basics of the language]]
 
 * Nix Pill #1: why you should give it a try
 
@@ -147,7 +148,258 @@ cd nix-1.9-x86_64-linux
 
 * Nix Pill #4: the basics of the language
 
-*** Origin: http://lethalman.blogspot.ru/2014/07/nix-pill-4-basics-of-language.html
+*** Introduction
+
+***** Nix-repl
+
+      This chapter makes a heavy use of =nix-repl=.  To install it, issue =nix-env
+      -i nix-repl=.
+
+      *CAVEAT*: the =nix-repl= syntax is slightly different than nix syntax when it
+      comes to assigning variables.
+
+*** Value types
+
+***** Simple types
+
+      - /integer/
+      - /string/
+      - /path/
+      - /boolean/
+      - /null/
+
+***** Complex types
+
+      - /list/
+      - /attribute set/
+      - /function/ -- yes, a first-class value that can be passed to and
+        returned from functions
+
+*** Operators
+
+***** Basic arithmetic:
+
+      - =+=, =-=, =*= and integer division as =builtins.div=:
+
+#+BEGIN_SRC nix
+nix-repl> 1+3
+4
+nix-repl> builtins.div 6 3
+2
+#+END_SRC
+
+      - *CAVEAT*: =/= is =path= concatenation instead:
+
+        #+BEGIN_SRC nix
+        nix-repl> 2/3
+        /home/nix/2/3
+        #+END_SRC
+
+        - /Nix/ parsed =2/3= as a /relative path/ to the current directory.
+        - /Paths/ are parsed as long as there's a slash.
+        - Therefore to specify the current directory, use =./=.
+        - In addition, /Nix/ also parses urls.
+        - Not all /urls/ or /paths/ can be parsed this way.  If a syntax error
+          occurs, it's still possible to fallback to plain /strings/.
+
+      - *NOTE*: =builtins.div= is not being used in the whole of /Nixpkgs/
+        repository, hence its second-class syntax status.
+
+***** Boolean expressions
+
+      - =||=, =&&=, =!=
+      - =!==, *==*
+      - less used tests: =<=, =>=, *>=*, *<=*
+
+***** Other operators
+
+      - http://nixos.org/nix/manual/#table-operators
+
+*** Identifiers
+
+    Dash (=-=) is allowed in identifiers:
+
+#+BEGIN_SRC nix
+nix-repl> a-b
+error: undefined variable `a-b' at (string):1:1
+nix-repl> a - b
+error: undefined variable `a' at (string):1:1
+#+END_SRC
+
+*** Strings
+
+    - String literals :: ..are enclosed by double-quotes ("), or two single-quotes
+         (''), with =\=-based escaping:
+
+#+BEGIN_SRC nix
+nix-repl> "''foo''"
+"''foo''"
+nix-repl> ''"foo"''
+"\"foo\""
+nix-repl> "\"foo\""
+"\"foo\""
+#+END_SRC
+
+    - /String literal/ syntax provides means for [[http://nixos.org/nix/manual/#ssec-values][interpolation]] of expressions
+      within =${...}=:
+
+      #+BEGIN_SRC nix
+      nix-repl> foo = "strval"
+      nix-repl> "$foo"
+      "$foo"
+      nix-repl> "${foo}"
+      "strval"
+      nix-repl> "${2+3}"
+      error: cannot coerce an integer to a string, at (string):1:2
+      #+END_SRC
+
+      - *NOTE*: ignore the foo = "strval" assignment, it's =nix-repl=-specific syntax.
+
+    - Escaping =${...}= within double-quoted /string literals/ is done with the
+      backslash.  Within two single quotes, it's done with =''=:
+
+#+BEGIN_SRC nix
+nix-repl> "\${foo}"
+"${foo}"
+nix-repl> ''test ''${foo} test''
+"test ${foo} test"
+#+END_SRC
+
+*** Lists
+
+    - List :: an immutable sequence of /expressions/ delimited by space (not comma):
+
+#+BEGIN_SRC nix
+nix-repl> [ 2 "foo" true (2+3) ]
+[ 2 "foo" true 5 ]
+#+END_SRC
+
+    - Adding or removing elements from a list is only possible through production
+      of a new list.
+
+*** Attribute sets
+
+    - Attribute set :: a set of associations between /keys/ and /values/, where:
+      - /keys/ can be either/identifiers/ or /strings/, for the cases when desired
+        key names aren't valid identifiers
+      - /values/ can be arbitrary /Nix/ /expressions/
+
+    - Example value:
+
+      #+BEGIN_SRC nix
+      nix-repl> s = { foo = "bar"; a-b = "baz"; "123" = "num"; }
+      nix-repl> s
+      { 123 = "num"; a-b = "baz"; foo = "bar"; }
+      #+END_SRC
+
+      - The output from =nix-repl= is wrong, you can't write { 123 = "num"; } because 123 is not an identifier.
+      - Semicolon (;) is required after every key-value assignment.
+      - For those reading /Nix/ expressions from /Nixpkgs/: do not confuse
+        /attribute sets/ (which are /values/) with /argument sets/ used in
+        function definitions (which are /argument specifiers/).
+
+    - Accessing elements:
+
+#+BEGIN_SRC nix
+nix-repl> s.a-b
+"baz"
+nix-repl> s."123"
+"num"
+#+END_SRC
+
+    - Defining /recursive attribute sets/:
+      - Exhibit of the problem:
+
+#+BEGIN_SRC nix
+nix-repl> { a = 3; b = a+4; }
+error: undefined variable `a' at (string):1:10
+#+END_SRC
+
+      - Problem statement -- =a= isn't in scope for =b=
+      - Solution: *INCOMPLETE*: URL
+
+#+BEGIN_SRC nix
+nix-repl> rec { a= 3; b = a+4; }
+{ a = 3; b = 7; }
+#+END_SRC
+
+*** If expression
+
+#+BEGIN_SRC nix
+nix-repl> a = 3
+nix-repl> b = 4
+nix-repl> if a > b then "yes" else "no"
+"no"
+#+END_SRC
+
+    - Both =then= and =else= must be available -- so the value of the expression
+      is always defined.
+
+*** Let expression
+
+    - Introducing variables into scope:
+
+#+BEGIN_SRC nix
+nix-repl> let a = 3; b = 4; in a + b
+7
+#+END_SRC
+
+    - ..with recursion:
+
+#+BEGIN_SRC nix
+nix-repl> let a = 4; b = a + 5; in b
+9
+#+END_SRC
+
+    - Variable scopes compose..:
+
+#+BEGIN_SRC nix
+nix-repl> let a = 3; in let b = 4; in a + b
+7
+#+END_SRC
+
+    - ..with shadowing:
+
+#+BEGIN_SRC nix
+nix-repl> let a = 3; in let a = 8; b = 4; in a + b
+12
+#+END_SRC
+
+*** With expression
+
+    - =with= allows "opening" /attribute sets/, binding names of its keys to their
+      corresponding values:
+
+#+BEGIN_SRC nix
+nix-repl> longExpression = { a = 3; b = 4; "123" = 5; }
+nix-repl> longExpression.a + longExpression.b
+7
+nix-repl> with longExpression; a + b
+7
+#+END_SRC
+
+    - *CAVEAT*: only valid identifiers from the set keys will be included
+
+#+BEGIN_SRC nix
+nix-repl> let a = 10; in with longExpression; a + b + longExpression."123"
+19
+#+END_SRC
+
+    - *CAVEAT*: if an identifier is bound in the outer scope and is also present
+      in the attribute set of =with=, it will *not* be shadowed
+
+#+BEGIN_SRC nix
+nix-repl> let a = 10; in with longExpression; a + b
+14
+nix-repl> let a = 10; in with longExpression; longExpression.a + b
+7
+#+END_SRC
+
+*** Laziness
+
+    /Nix/ evaluates expressions only [[http://en.wikipedia.org/wiki/Lazy_evaluation][when needed]].  This allows easy definition of
+    mutually referencing entities and efficient handling of large package
+    repository definitions.
 
     *** INCOMPLETE ***
 

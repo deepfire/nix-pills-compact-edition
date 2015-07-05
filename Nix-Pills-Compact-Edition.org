@@ -26,6 +26,7 @@
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-2-install-on-your-running-system][Nix Pill #2: install on your running system]] (incomplete)
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-4-the-basics-of-the-language][Nix Pill #4: the basics of the language]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-12-the-inputs-design-pattern][Nix Pill #12: the inputs design pattern]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-13-the-callpackage-design-pattern][Nix Pill #13: the callPackage design pattern]]
 
 * Nix Pill #1: why you should give it a try
 
@@ -447,7 +448,7 @@ nix-repl> let a = 10; in with longExpression; longExpression.a + b
 
 * Nix Pill #12: the inputs design pattern
 
-***  Composing package definitions: repositories in Nix
+*** Composing package definitions: repositories in Nix
 
      - We only packaged a single program so far -- but how do we compose package definitions?
 
@@ -735,7 +736,173 @@ nix-repl> graphviz
 
 *** Origin: http://lethalman.blogspot.ru/2014/09/nix-pill-13-callpackage-design-pattern.html
 
-    *** INCOMPLETE ***
+*** The callPackage convenience
+
+    - Problem: duplicate listing of /package function/ arguments -- /explicit
+      argument passing/:
+      - In /package function/:
+
+#+BEGIN_SRC nix
+# package1.nix
+{ input1, input2, ... }:
+...
+#+END_SRC
+
+      - In /package derivation expressions/:
+
+#+BEGIN_SRC nix
+rec {
+  lib1     = import package1.nix { inherit input1 input2 ...; };
+  program2 = import package2.nix { inherit inputX inputY lib1 ...; };
+}
+#+END_SRC
+
+    - *NOTE*: this "problem" wouldn't have arised, had we not strategically
+      chosen the /package function/ /parameter names/ to coincide with the
+      /derivation names/ in the /global derivation namespace/.  To be clear: this
+      is a simplification opportunity, not a problem.
+
+    - So, what form do we choose for the lucky /derivation expressions/ -- those
+      enjoying the parameter/namespace coincidence?  How about this:
+
+#+BEGIN_SRC nix
+{
+  lib1     = callPackage package1.nix { };
+  program2 = callPackage package2.nix { someoverride = overriddenDerivation; };
+}
+#+END_SRC
+
+    - The exact semantics should this /implicit argument passing/ have?  This:
+      - Import the given /expression/ (which still must evaluate to a /function/).
+      - Determine the name of its arguments.
+      - Pass the values bound within /global derivation namespace/ to the names of
+        those arguments, and let us override those arguments.
+
+*** Implementing callPackage
+
+    - To implement /implicit argument passing/, we need a way to introspect at
+      runtime the /argument names/ of a /function/, to know what names it needs:
+
+      #+BEGIN_SRC nix
+      nix-repl> add = { a ? 3, b }: a+b
+      nix-repl> builtins.functionArgs add
+      { a = true; b = false; }
+      #+END_SRC
+
+      - As a bonus, =builtins.functionArgs= returns not just the names, but also
+        a boolean that determines whether the names have a default value or not.
+
+    - We need access to the /global derivation namespace/, to know what is available
+
+    - Given both of the above, the next step is to extract a subset from the
+      /global derivation namespace/, determined by the chosen names:
+
+      #+BEGIN_SRC nix
+      # Mocking the /global derivation namespace/ here:
+      nix-repl> values = { a = 3; b = 5; c = 10; }
+      nix-repl> builtins.intersectAttrs values (builtins.functionArgs add)
+      { a = true; b = false; }
+      nix-repl> builtins.intersectAttrs (builtins.functionArgs add) values
+      { a = 3; b = 5; }
+      #+END_SRC
+
+      - =builtins.intersectAttrs= is the function that does the extraction
+
+    - This allows for a preliminary implementation of =callPackage= --
+      function calling with /implicit argument passing/, without overrides:
+
+      #+BEGIN_SRC nix
+      nix-repl> callPackage = set: f: f (builtins.intersectAttrs (builtins.functionArgs f) set)
+      nix-repl> callPackage values add
+      8
+      nix-repl> with values; add { inherit a b; }
+      8
+      #+END_SRC
+
+      - =callPackage= is a function of two arguments:
+        - the /attribute set/ from which to take arguments for..
+        - ..the function that is to be called
+      - the second expression shows the original function call expression,
+        with /explicit argument passing/ that we sought to avoid
+
+    - What if the /attribute set/ is missing a key/value pair for the /required
+      argument/ of the function being called?  Nothing special -- that's an error.
+
+    - The remaining piece is being able to override the /attribute set/, for
+      example if the /input derivation/ we want to supply is named with something
+      else than the canonical /derivation name/ -- like =gcc-5.2=, instead of
+      =gcc=.
+
+    - This can be done through adding a third argument to =callPackage= -- the
+      override /attribute set/:
+
+      #+BEGIN_SRC nix
+      nix-repl> callPackage = set: f: overrides: f ((builtins.intersectAttrs (builtins.functionArgs f) set) // overrides)
+      nix-repl> callPackage values add { }
+      8
+      nix-repl> callPackage values add { b = 12; }
+      15
+      #+END_SRC
+
+      - the =//= operator is an /attribute set/ union, with the /attribute set/ on
+        the right taking precedence in case of key conflicts.
+
+*** Use callPackage to simplify the repository
+
+    Given our brand new tool, we can simplify the repository expression
+    (=default.nix=):
+
+    #+BEGIN_SRC nix
+    let
+      nixpkgs     = import <nixpkgs> {};
+      allPkgs     = nixpkgs // pkgs;
+      callPackage = path: overrides:
+        let f = import path;
+        in f ((builtins.intersectAttrs (builtins.functionArgs f) allPkgs)
+              // overrides);
+      pkgs        = with nixpkgs; {
+        mkDerivation = import ./autotools.nix nixpkgs;
+        hello        = callPackage ./hello.nix { };
+        graphviz     = callPackage ./graphviz.nix { };
+        graphvizCore = callPackage ./graphviz.nix { gdSupport = false; };
+      };
+    in pkgs
+    #+END_SRC
+
+    - We renamed the old =pkgs= of the previous pill to =nixpkgs=. "Our" package
+      /attribute set/ is now instead named =pkgs=.
+    - For convenience, in =callPackage= we first =import= the file argument,
+      instead of calling it directly.  Otherwise each /derivation expression/
+      would have to perform the import itself.
+    - Since our expressions use packages from /Nixpkgs/, in =callPackage= we use
+      =allPkgs=, which is the union of /Nixpkgs/ and our packages.
+    - We moved =mkDerivation= into =pkgs= itself, so that it gets also passed
+      implicitly
+
+    Note how easy is to override arguments in the case of =graphviz= without =gd=.
+    But most importantly, how easy it was to merge two repositories: =nixpkgs= and our =pkgs=!
+
+    *NOTE*: ..how deeply the new scheme depends on the ability of =let= to
+    define mutually recursive structure -- which is only made possible by
+    /lazy evaluation/ semantics of /Nix/:
+      - =allPkgs= depends on =pkgs=
+      - =callPackage= depends on =allPkgs=
+      - =pkgs= depends on =callPackage=
+
+*** Conclusion
+
+    - /Implicit argument passing/ enabled by callPackage, (aka the /callPackage
+      pattern/) allow us to reduce maintenance burden:
+      - whenever the set of /package function/ arguments change, we'll most likely
+        need to change just one place -- the /package function/ itself
+      - whenever the /derivation expression/ needs an override of the default
+        inputs to the /package function/, it can easily do just this
+    - =builtins.functionArgs= is undocumented in the [[http://nixos.org/nix/manual/][Nix Manual]], mostly because
+      it's a function that only makes sense for the sort of plumbing we're going
+      through.
+    - Most of all, we get to see how /Nix/, the language, is a generic tool
+      suitable for construction of arbitrary purpose-built abstractions, that can
+      support any policy we choose.
 
 * Nix Pill #14: the override design pattern
 

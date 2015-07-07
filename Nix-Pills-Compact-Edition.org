@@ -27,6 +27,7 @@
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-4-the-basics-of-the-language][Nix Pill #4: the basics of the language]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-12-the-inputs-design-pattern][Nix Pill #12: the inputs design pattern]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-13-the-callpackage-design-pattern][Nix Pill #13: the callPackage design pattern]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-14-the-override-design-pattern][Nix Pill #14: the override design pattern]]
 
 * Nix Pill #1: why you should give it a try
 
@@ -906,9 +907,138 @@ rec {
 
 * Nix Pill #14: the override design pattern
 
-*** Origin: http://lethalman.blogspot.ru/2014/09/nix-pill-14-override-design-pattern.html
+*** Prelude: about composability
 
-    *** INCOMPLETE ***
+    - Functional update pattern: update functions return a modified copy
+      of the original structure.
+
+    - Common type in Nix :: =a -> Derivation=
+
+    - Example:
+      - input derivation =drv=
+      - with debug info
+      - with patches applied
+
+        #+BEGIN_SRC nix
+        debugVersion (applyPatches [ ./patch1.patch ./patch2.patch ] drv)
+        #+END_SRC
+
+*** The override pattern
+
+    Let us recall the repository structure:
+
+    - A recursive attribute set :: =Name -> Derivation=
+
+    - ..that employs introspection to supply arguments -- that are its own
+      elements -- to the =Derivation= expressions
+
+    - ..it has the following form:
+
+      #+BEGIN_SRC nix
+      graphviz = callPackage ./graphviz.nix { };
+      #+END_SRC
+
+    - If we wanted to produce a derivation of =graphviz= with a customized =gd=
+      version, we would have to:
+
+      #+BEGIN_SRC nix
+      mygraphviz = callPackage ./graphviz.nix { gd = customgd; };
+      #+END_SRC
+
+    - The problem here is a little unobvious -- our override is tightly coupled to
+      the original definition -- which forces us to:
+
+      1. find the original definition
+      2. derive a modified version
+      3. maintain the modification against the possible changes of the original
+
+    - So, we would like to decouple the override from the form of the definition:
+
+      #+BEGIN_SRC nix
+      mygraphviz = graphviz.override { gd = customgd; };
+      #+END_SRC
+
+      - *NOTE*: in this form, =.override= is just a plain element of an /attribute set/
+
+*** The override implementation
+
+    As a reminder, the =graphviz= attribute is the /derivation/ (which is an
+    /attribute set/) returned by the /derivation function/ =import=-ed from
+    =graphviz.nix=.
+
+    So, to follow the form we preferred above, we would have to modify the
+    =import=-ed function to return its original /attribute set/ enriched with an
+    element named =override=.
+
+    - First attempt:
+
+      #+BEGIN_SRC nix
+      {
+        # makeOverridable :: (ASet Inputs -> Drv) -> ASet Inputs
+        makeOverridable = f: origArgs:
+          let
+            origRes = f origArgs;
+          in
+            origRes // { override = newArgs: f (origArgs // newArgs); };
+      }
+      #+END_SRC
+
+      - takes a /derivation function/
+      - returns a /derivation function/, that returns a /derivation/ with an
+        enriched /attribute set/ -- the added =override= attribute
+      - the =override= attribute _too_ is a /derivation function/, but one, that
+        calls the _original_ derivation function with _original_ arguments
+        enriched by the /attribute set/ supplied to the /override function/
+
+    - How does it work?
+
+      #+BEGIN_SRC nix
+      $ nix-repl
+      nix-repl> :l lib.nix
+      Added 1 variables.
+      nix-repl> f = { a, b }: { result = a+b; }
+      nix-repl> f { a = 3; b = 5; }
+      { result = 8; }
+      nix-repl> res = makeOverridable f { a = 3; b = 5; }
+      nix-repl> res
+      { override = «lambda»; result = 8; }
+      #+END_SRC
+
+      - so far, so good..
+
+    - But, can we chain overrides?
+
+      #+BEGIN_SRC nix
+      nix-repl> res.override { a = 10; }
+      { result = 15; }
+      #+END_SRC
+
+      - ..the result of an override is missing the =override= attribute,
+        so no, we can't.
+
+    - Try #2:
+
+      #+BEGIN_SRC nix
+      rec {
+        makeOverridable = f: origArgs:
+          let
+            origRes = f origArgs;
+          in
+            origRes // { override = newArgs: makeOverridable f (origArgs // newArgs); };
+      }
+      #+END_SRC
+
+      - the =rec= keyword allows us to refer to =makeOverridable= from its own
+        definition
+      - overrides can now be chained
+
+*** Conclusion
+
+    - =makeOverridable= allows us to decouple expressions defining derivations,
+      from the points where we want to override them.
+
+    - This allows a degree of separation between the package definitions, and the
+      package users.
 
 * Nix Pill #15: nix search paths
 

@@ -28,6 +28,7 @@
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-12-the-inputs-design-pattern][Nix Pill #12: the inputs design pattern]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-13-the-callpackage-design-pattern][Nix Pill #13: the callPackage design pattern]]
   - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-14-the-override-design-pattern][Nix Pill #14: the override design pattern]]
+  - [[https://github.com/deepfire/nix-pills-compact-edition#nix-pill-17-nixpkgs-overriding-packages][Nix Pill #17: nixpkgs, overriding packages]]
 
 * Nix Pill #1: why you should give it a try
 
@@ -1056,7 +1057,158 @@ rec {
 
 *** Origin: http://lethalman.blogspot.ru/2014/11/nix-pill-17-nixpkgs-overriding-packages.html
 
-    *** INCOMPLETE ***
+*** Overriding a package
+
+    - In Nix Pill #14, to produce an overriden /derivation/ by producing a
+      modified /derivation expression/, in order to avoid coupling we have
+      built-in overridability into the /derivation function/, by putting an
+      /override function/ into the /attribute set/ returned by the /derivation
+      function/ under the name =override=.
+
+    - As an example usage, here's how we override =graphviz= to build without X
+      support:
+
+      #+BEGIN_SRC nix
+      $ nix-repl
+      nix-repl> :l <nixpkgs>
+      Added 4360 variables.
+      nix-repl> :b graphviz.override { xlibs = null; }
+      #+END_SRC
+
+    - However, how do we make other packages refer to this overriden =graphviz=,
+      instead of the original one?
+      - There is no global, shared state to mutate -- our only option is to re-evaluate
+        everything in a modified context.
+      - Note also, how not only the new /derivations/ need to refer to the new
+        =graphviz=, but they also must refer to the new versions of each other.
+      - Hence the option of overriding everything manually would entail a
+        prohibitive amount of work -- basically amounting to repeating the whole
+        repository with a new, parallel set of names.
+
+*** Fixed point and beyond
+
+    - Enter =fix=, a /fix-point/ combinator, that:
+      - takes a function
+      - call it with its own returned value made available to it as argument
+
+      #+BEGIN_SRC nix
+      fix = f: let result = f result; in result;
+      #+END_SRC
+
+    - The effective call structure is =f(f(f(....=
+
+    - If =f= always used the /entirety/ of its argument, that would have been an
+      infinite loop.
+
+      #+BEGIN_SRC nix
+      nix-repl> fix = f: let result = f result; in result
+      nix-repl> pkgs = self: { x = "abc"; y = self.x + "123"; }
+      nix-repl> fix pkgs
+      { x = "abc"; y = "abc123"; }
+      #+END_SRC
+
+      Squinting a little, we can see how:
+
+      1. the subexpression to the right of =self= is our /repository declaration/, where:
+         - =x= and =y= correspond to our package names..
+         - ="abc"=, =self.x + "123"= correspond to our /derivation expressions/
+      2. =fix pkgs= is the /repository expression/, yielding an attribute set
+         mapping names to derivations
+
+    - Note, how =y= is determined in terms of =self= -- which isn't quite pretty.
+      Can we do without that, so we can squint less?  Yes:
+
+      #+BEGIN_SRC nix
+      nix-repl> fix = f: let result = f result; in result
+      nix-repl> pkgs = self: with self; { x = "abc"; y = x + "123"; }
+      nix-repl> fix pkgs
+      { x = "abc"; y = "abc123"; }
+      #+END_SRC
+
+    - Notice how we didn't even start with the overriding part, having merely
+      established a correspondence between our toy example and Nixpkgs structure.
+      So, what about overriding?  Let's note several details:
+
+      1. We want to intervene at the level of /repository expression/, separately
+         from the /repository declaration/, since =pkgs= has just the perfect
+         structure, and we don't want to mess with it.
+      2. By the time we call =fix=, it's too late to intervene -- it seals the
+         value.
+      3. Adding up #1 and #2, we see that we need to produce an function that,
+         given an overriding set, would transform =pkgs=, but without changing its
+         type -- the transformed value must be still something that we can pass to
+         =fix=.
+      4. Given our goals, we can postulate the following about this function:
+         - it must take an overriding attribute set
+         - it must take the object being overriden (a concrete value of =pkgs=)
+         - it must return a function that would behave as =pkgs= does, which implies:
+           - the returned function must take an attribute set -- the value of =self=
+           - the returned function must return an attribute set -- with the
+             overrides applied
+
+      Here's how this can be done:
+
+      #+BEGIN_SRC nix
+      nix-repl> pkgs = self: with self; { x = "abc"; y = x + "123"; }
+      nix-repl> withOverride = overrides: f: self: f self // overrides
+      nix-repl> fix (withOverride { x = "def"; } pkgs)
+      { x = "def"; y = "def123"; }
+      #+END_SRC
+
+    - Now, we would like to use the /package environment/ inside the /override
+      expression/, wouldn't we -- for example to be able to override =y=?  The
+      only way to do that would be to change the /override expression/ from being
+      an attribute set to a function taking the /package environment/ and
+      returning the attribute set:
+
+      #+BEGIN_SRC nix
+      nix-repl> pkgs = self: with self; { x = "abc"; y = x + "123"; z = y + "456"; }
+      nix-repl> withOverride = overrides: f: self: f self // overrides self
+      nix-repl> fix (withOverride (self: with self; { y = x + "---"; }) pkgs)
+      { x = "abc"; y = "abc---"; z = "abc---456"; }
+      #+END_SRC
+
+    - The next step is to package the override method into the attribute set
+      itself, in a way similar to how we did it in /Nix Pill #14/:
+
+      #+BEGIN_SRC nix
+      nix-repl> withOverride = overrides: f: self: f self // overrides self
+      nix-repl> virtual = let virt = f: fix f // { _override = overrides: virt (withOverride overrides f); }; in virt
+      nix-repl> pkgs = virtual (self: with self; { x = "abc"; y = x + "123"; z = y + "456"; })
+      nix-repl> pkgs
+      { _override = «lambda»; x = "abc"; y = "abc123"; z = "abc123456"; }
+      nix-repl> pkgs._override (self: with self; { y = x + "---"; })
+      { _override = «lambda»; x = "abc"; y = "abc---"; z = "abc---456"; }
+      #+END_SRC
+
+    Finally, we have produced a way to define an attribute set, with the following
+    properties:
+
+    - its definition is recursive -- its elements can be defined in terms of each other
+    - it ships with a method to perform a deep override of any element and,
+      recursively, all the elements that refer to it
+
+*** Overriding packages globally, the user-exposed way
+
+    /Nixpkgs/ exposes the mechanism we examined above through the
+    =packageOverrides= attribute in =config= / =~/.nixpkgs/config.nix=:
+
+    #+BEGIN_SRC nix
+    {
+      packageOverrides = pkgs: {
+        graphviz = pkgs.graphviz.override { xlibs = null; };
+      };
+    }
+    #+END_SRC
+
+    Overriding =graphviz= like this will make the change propagate to all packages
+    that refer to it.
+
+*** TODO The =~/.nixpkgs/config.nix= file
+
+    #+BEGIN_SRC nix
+    pkgs = import <nixpkgs> { config = import ./config.nix; }
+    #+END_SRC
 
 * Nix Pill #18: nix store paths
 
